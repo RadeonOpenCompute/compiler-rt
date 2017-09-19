@@ -35,6 +35,14 @@
 # define SANITIZER_WEAK_ATTRIBUTE  __attribute__((weak))
 #endif
 
+// TLS is handled differently on different platforms
+#if SANITIZER_LINUX
+# define SANITIZER_TLS_INITIAL_EXEC_ATTRIBUTE \
+    __attribute__((tls_model("initial-exec"))) thread_local
+#else
+# define SANITIZER_TLS_INITIAL_EXEC_ATTRIBUTE
+#endif
+
 //--------------------------- WEAK FUNCTIONS ---------------------------------//
 // When working with weak functions, to simplify the code and make it more
 // portable, when possible define a default implementation using this macro:
@@ -129,12 +137,8 @@ typedef int error_t;
 #endif
 typedef int pid_t;
 
-// WARNING: OFF_T may be different from OS type off_t, depending on the value of
-// _FILE_OFFSET_BITS. This definition of OFF_T matches the ABI of system calls
-// like pread and mmap, as opposed to pread64 and mmap64.
-// FreeBSD, Mac and Linux/x86-64 are special.
-#if SANITIZER_FREEBSD || SANITIZER_MAC || \
-  (SANITIZER_LINUX && defined(__x86_64__))
+#if SANITIZER_FREEBSD || SANITIZER_NETBSD || SANITIZER_MAC || \
+    (SANITIZER_LINUX && defined(__x86_64__))
 typedef u64 OFF_T;
 #else
 typedef uptr OFF_T;
@@ -152,6 +156,12 @@ typedef u32 operator_new_size_type;
 # endif
 #endif
 
+#if SANITIZER_MAC
+// On Darwin, thread IDs are 64-bit even on 32-bit systems.
+typedef u64 tid_t;
+#else
+typedef uptr tid_t;
+#endif
 
 // ----------- ATTENTION -------------
 // This header should NOT include any other headers to avoid portability issues.
@@ -251,8 +261,8 @@ void NORETURN CheckFailed(const char *file, int line, const char *cond,
 
 #define CHECK_IMPL(c1, op, c2) \
   do { \
-    __sanitizer::u64 v1 = (u64)(c1); \
-    __sanitizer::u64 v2 = (u64)(c2); \
+    __sanitizer::u64 v1 = (__sanitizer::u64)(c1); \
+    __sanitizer::u64 v2 = (__sanitizer::u64)(c2); \
     if (UNLIKELY(!(v1 op v2))) \
       __sanitizer::CheckFailed(__FILE__, __LINE__, \
         "(" #c1 ") " #op " (" #c2 ")", v1, v2); \

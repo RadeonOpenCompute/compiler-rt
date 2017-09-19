@@ -223,9 +223,8 @@ static bool IsMemoryPadding(uptr address, uptr size) {
   return true;
 }
 
-static const u8 kHintNop10Bytes[] = {
-  0x66, 0x66, 0x0F, 0x1F, 0x84,
-  0x00, 0x00, 0x00, 0x00, 0x00
+static const u8 kHintNop9Bytes[] = {
+  0x66, 0x0F, 0x1F, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00
 };
 
 template<class T>
@@ -240,8 +239,8 @@ static bool FunctionHasPrefix(uptr address, const T &pattern) {
 static bool FunctionHasPadding(uptr address, uptr size) {
   if (IsMemoryPadding(address - size, size))
     return true;
-  if (size <= sizeof(kHintNop10Bytes) &&
-      FunctionHasPrefix(address, kHintNop10Bytes))
+  if (size <= sizeof(kHintNop9Bytes) &&
+      FunctionHasPrefix(address, kHintNop9Bytes))
     return true;
   return false;
 }
@@ -477,7 +476,7 @@ static size_t GetInstructionSize(uptr address, size_t* rel_offset = nullptr) {
   switch (*(u8*)address) {
     case 0xA1:  // A1 XX XX XX XX XX XX XX XX :
                 //   movabs eax, dword ptr ds:[XXXXXXXX]
-      return 8;
+      return 9;
   }
 
   switch (*(u16*)address) {
@@ -495,6 +494,11 @@ static size_t GetInstructionSize(uptr address, size_t* rel_offset = nullptr) {
     case 0x5741:  // push r15
     case 0x9066:  // Two-byte NOP
       return 2;
+
+    case 0x058B:  // 8B 05 XX XX XX XX : mov eax, dword ptr [XX XX XX XX]
+      if (rel_offset)
+        *rel_offset = 2;
+      return 6;
   }
 
   switch (0x00FFFFFF & *(u32*)address) {

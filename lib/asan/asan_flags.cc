@@ -61,7 +61,7 @@ void InitializeFlags() {
   {
     CommonFlags cf;
     cf.CopyFrom(*common_flags());
-    cf.detect_leaks = CAN_SANITIZE_LEAKS;
+    cf.detect_leaks = cf.detect_leaks && CAN_SANITIZE_LEAKS;
     cf.external_symbolizer_path = GetEnv("ASAN_SYMBOLIZER_PATH");
     cf.malloc_context_size = kDefaultMallocContextSize;
     cf.intercept_tls_get_addr = true;
@@ -94,6 +94,18 @@ void InitializeFlags() {
   __ubsan::RegisterUbsanFlags(&ubsan_parser, uf);
   RegisterCommonFlags(&ubsan_parser);
 #endif
+
+  if (SANITIZER_MAC) {
+    // Support macOS MallocScribble and MallocPreScribble:
+    // <https://developer.apple.com/library/content/documentation/Performance/
+    // Conceptual/ManagingMemory/Articles/MallocDebug.html>
+    if (GetEnv("MallocScribble")) {
+      f->max_free_fill_size = 0x1000;
+    }
+    if (GetEnv("MallocPreScribble")) {
+      f->malloc_fill_byte = 0xaa;
+    }
+  }
 
   // Override from ASan compile definition.
   const char *asan_compile_def = MaybeUseAsanDefaultOptionsCompileDefinition();
@@ -181,6 +193,10 @@ void InitializeFlags() {
   if (!f->replace_str && common_flags()->intercept_strchr) {
     Report("WARNING: strchr* interceptors are enabled even though "
            "replace_str=0. Use intercept_strchr=0 to disable them.");
+  }
+  if (!f->replace_str && common_flags()->intercept_strndup) {
+    Report("WARNING: strndup* interceptors are enabled even though "
+           "replace_str=0. Use intercept_strndup=0 to disable them.");
   }
 }
 

@@ -60,9 +60,8 @@ void PrintMemoryByte(InternalScopedString *str, const char *before, u8 byte,
                      bool in_shadow, const char *after) {
   Decorator d;
   str->append("%s%s%x%x%s%s", before,
-              in_shadow ? d.ShadowByte(byte) : d.MemoryByte(),
-              byte >> 4, byte & 15,
-              in_shadow ? d.EndShadowByte() : d.EndMemoryByte(), after);
+              in_shadow ? d.ShadowByte(byte) : d.MemoryByte(), byte >> 4,
+              byte & 15, d.Default(), after);
 }
 
 static void PrintZoneForPointer(uptr ptr, uptr zone_ptr,
@@ -88,7 +87,8 @@ bool ParseFrameDescription(const char *frame_descr,
   char *p;
   // This string is created by the compiler and has the following form:
   // "n alloc_1 alloc_2 ... alloc_n"
-  // where alloc_i looks like "offset size len ObjectName".
+  // where alloc_i looks like "offset size len ObjectName"
+  // or                       "offset size len ObjectName:line".
   uptr n_objects = (uptr)internal_simple_strtoll(frame_descr, &p, 10);
   if (n_objects == 0)
     return false;
@@ -101,7 +101,14 @@ bool ParseFrameDescription(const char *frame_descr,
       return false;
     }
     p++;
-    StackVarDescr var = {beg, size, p, len};
+    char *colon_pos = internal_strchr(p, ':');
+    uptr line = 0;
+    uptr name_len = len;
+    if (colon_pos != nullptr && colon_pos < p + len) {
+      name_len = colon_pos - p;
+      line = (uptr)internal_simple_strtoll(colon_pos + 1, nullptr, 10);
+    }
+    StackVarDescr var = {beg, size, p, name_len, line};
     vars->push_back(var);
     p += len;
   }
@@ -133,9 +140,9 @@ class ScopedInErrorReport {
 
       // Can't use Report() here because of potential deadlocks
       // in nested signal handlers.
-      const char msg[] = "AddressSanitizer: nested bug in the same thread, "
-                         "aborting.\n";
-      WriteToFile(kStderrFd, msg, sizeof(msg));
+      static const char msg[] =
+          "AddressSanitizer: nested bug in the same thread, aborting.\n";
+      CatastrophicErrorWrite(msg, sizeof(msg) - 1);
 
       internal__exit(common_flags()->exitcode);
     }
@@ -196,6 +203,14 @@ class ScopedInErrorReport {
       error_report_callback(buffer_copy.data());
     }
 
+    if (halt_on_error_ && common_flags()->abort_on_error) {
+      // On Android the message is truncated to 512 characters.
+      // FIXME: implement "compact" error format, possibly without, or with
+      // highly compressed stack traces?
+      // FIXME: or just use the summary line as abort message?
+      SetAbortMessage(buffer_copy.data());
+    }
+
     // In halt_on_error = false mode, reset the current error object (before
     // unlocking).
     if (!halt_on_error_)
@@ -245,15 +260,9 @@ StaticSpinMutex ScopedInErrorReport::lock_;
 u32 ScopedInErrorReport::reporting_thread_tid_ = kInvalidTid;
 ErrorDescription ScopedInErrorReport::current_error_;
 
-void ReportStackOverflow(const SignalContext &sig) {
+void ReportDeadlySignal(const SignalContext &sig) {
   ScopedInErrorReport in_report(/*fatal*/ true);
-  ErrorStackOverflow error(GetCurrentTidOrInvalid(), sig);
-  in_report.ReportError(error);
-}
-
-void ReportDeadlySignal(int signo, const SignalContext &sig) {
-  ScopedInErrorReport in_report(/*fatal*/ true);
-  ErrorDeadlySignal error(GetCurrentTidOrInvalid(), sig, signo);
+  ErrorDeadlySignal error(GetCurrentTidOrInvalid(), sig);
   in_report.ReportError(error);
 }
 

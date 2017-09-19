@@ -93,7 +93,8 @@ inline static bool patchSled(const bool Enable, const uint32_t FuncId,
   if (Enable) {
     uint32_t LoTracingHookAddr =
         reinterpret_cast<int64_t>(TracingHook) & 0xffff;
-    uint32_t HiTracingHookAddr = (reinterpret_cast<int64_t>(TracingHook) >> 16) & 0xffff;
+    uint32_t HiTracingHookAddr =
+        (reinterpret_cast<int64_t>(TracingHook) >> 16) & 0xffff;
     uint32_t HigherTracingHookAddr =
         (reinterpret_cast<int64_t>(TracingHook) >> 32) & 0xffff;
     uint32_t HighestTracingHookAddr =
@@ -143,8 +144,9 @@ inline static bool patchSled(const bool Enable, const uint32_t FuncId,
 }
 
 bool patchFunctionEntry(const bool Enable, const uint32_t FuncId,
-                        const XRaySledEntry &Sled) XRAY_NEVER_INSTRUMENT {
-  return patchSled(Enable, FuncId, Sled, __xray_FunctionEntry);
+                        const XRaySledEntry &Sled,
+                        void (*Trampoline)()) XRAY_NEVER_INSTRUMENT {
+  return patchSled(Enable, FuncId, Sled, Trampoline);
 }
 
 bool patchFunctionExit(const bool Enable, const uint32_t FuncId,
@@ -159,4 +161,13 @@ bool patchFunctionTailExit(const bool Enable, const uint32_t FuncId,
   return patchSled(Enable, FuncId, Sled, __xray_FunctionExit);
 }
 
+bool patchCustomEvent(const bool Enable, const uint32_t FuncId,
+                      const XRaySledEntry &Sled) XRAY_NEVER_INSTRUMENT {
+  // FIXME: Implement in mips64?
+  return false;
+}
 } // namespace __xray
+
+extern "C" void __xray_ArgLoggerEntry() XRAY_NEVER_INSTRUMENT {
+  // FIXME: this will have to be implemented in the trampoline assembly file
+}

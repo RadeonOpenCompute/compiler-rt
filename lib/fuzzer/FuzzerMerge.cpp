@@ -223,6 +223,7 @@ void Fuzzer::CrashResistantMergeInternalStep(const std::string &CFPath) {
   std::ofstream OF(CFPath, std::ofstream::out | std::ofstream::app);
   Set<size_t> AllFeatures;
   for (size_t i = M.FirstNotProcessedFile; i < M.Files.size(); i++) {
+    MaybeExitGracefully();
     auto U = FileToVector(M.Files[i].Name);
     if (U.size() > MaxInputLen) {
       U.resize(MaxInputLen);
@@ -253,6 +254,7 @@ void Fuzzer::CrashResistantMergeInternalStep(const std::string &CFPath) {
     for (size_t F : UniqFeatures)
       OF << " " << std::hex << F;
     OF << "\n";
+    OF.flush();
   }
 }
 
@@ -334,6 +336,7 @@ void Fuzzer::CrashResistantMerge(const Vector<std::string> &Args,
                              CloneArgsWithoutX(Args, "merge"));
   bool Success = false;
   for (size_t Attempt = 1; Attempt <= NumAttempts; Attempt++) {
+    MaybeExitGracefully();
     Printf("MERGE-OUTER: attempt %zd\n", Attempt);
     auto ExitCode =
         ExecuteCommand(BaseCmd.first + " -merge_control_file=" + CFPath +
@@ -376,7 +379,7 @@ void Fuzzer::CrashResistantMerge(const Vector<std::string> &Args,
   Printf("MERGE-OUTER: %zd new files with %zd new features added\n",
          NewFiles.size(), NumNewFeatures);
   for (auto &F: NewFiles)
-    WriteToOutputCorpus(FileToVector(F));
+    WriteToOutputCorpus(FileToVector(F, MaxInputLen));
   // We are done, delete the control file if it was a temporary one.
   if (!MergeControlFilePathOrNull)
     RemoveFile(CFPath);
